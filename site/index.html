@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>native-sim — a real iOS Simulator, streamed from a GitHub runner</title>
+<meta name="description" content="Build an Expo app on a GitHub-hosted macOS runner and stream the live iOS Simulator to your browser. Let a coding agent drive it." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="brand">native<span>-sim</span></div>
+    <nav class="nav">
+      <a href="#flow">Flow</a>
+      <a href="#how">How</a>
+      <a href="#agent">Agents</a>
+      <a href="#hosting">Hosting</a>
+      <a href="#cost">Cost</a>
+      <a href="https://github.com/bidah/native-sim">GitHub</a>
+    </nav>
+  </header>
+</div>
+
+<div class="wrap">
+  <section class="hero">
+    <p class="label">iOS Simulator · GitHub Actions · your browser</p>
+    <h1 class="display">Your app on a real<br />iOS Simulator.<br />Nothing installed.</h1>
+    <p class="lede">
+      native-sim pushes your Expo app to a <strong>GitHub-hosted macOS runner</strong>, builds it,
+      and streams the running simulator back to your browser. On a public repo the
+      minutes are <strong>free and unlimited</strong>.
+    </p>
+    <a class="cta" href="https://github.com/bidah/native-sim#readme">Read the docs</a>
+    <span class="cta-note">npm i -g native-sim</span>
+
+    <div class="code">
+<pre><span class="c-dim">$</span> cd my-expo-app
+<span class="c-dim">$</span> native-sim up --public --minutes 45
+
+<span class="c-dim">›</span> Preparing repository
+<span class="c-dim">✓</span> pushed to bidah/my-expo-app
+<span class="c-dim">›</span> Dispatching build
+<span class="c-dim">✓</span> run https://github.com/bidah/my-expo-app/actions/runs/1234567
+
+  <span class="c-hot">●</span> Simulator is live
+  https://calm-river-1234.trycloudflare.com/?k=…</pre>
+    </div>
+  </section>
+
+  <section id="flow">
+    <p class="label">The flow</p>
+    <h2>What <code>native-sim up</code> does.</h2>
+    <p class="muted">
+      One command, but the order matters more than it looks — GitHub imposes constraints
+      that shape every step.
+    </p>
+
+    <ol class="flow">
+      <li>
+        <span class="side">Local</span>
+        <div>
+          <h3>Commit and push your app</h3>
+          <p>Creates the GitHub repo if there isn't one. Your app goes up first, on its own.</p>
+        </div>
+      </li>
+      <li>
+        <span class="side">Local</span>
+        <div>
+          <h3>Then push the workflow, separately</h3>
+          <p>A second commit adds <code>.github/workflows/native-sim.yml</code> and the auth gate.</p>
+          <p class="note"><strong>Why two pushes?</strong> GitHub does not scan the first push to a
+          brand-new empty repo for workflow files. Ship the workflow in that push and Actions
+          never registers it — the dispatch then fails with a confusing 404.</p>
+        </div>
+      </li>
+      <li>
+        <span class="side">Local</span>
+        <div>
+          <h3>Wait for Actions to register it</h3>
+          <p>Polls until GitHub acknowledges the workflow, and nudges it with a fresh commit if
+          it stalls. A workflow only becomes dispatchable once it exists on the <em>default</em>
+          branch.</p>
+        </div>
+      </li>
+      <li>
+        <span class="side">Local</span>
+        <div>
+          <h3>Mint a session id and an access key</h3>
+          <p>24 random bytes. The key is generated here and <strong>never leaves your machine</strong>.</p>
+        </div>
+      </li>
+      <li>
+        <span class="side runner">Runner</span>
+        <div>
+          <h3>Boot, build, install, launch</h3>
+          <p>A macOS runner boots a simulator, restores the fingerprint-matched build cache or
+          compiles, then installs and launches your app.</p>
+        </div>
+      </li>
+      <li>
+        <span class="side runner">Runner</span>
+        <div>
+          <h3>Publish the URL as a commit status</h3>
+          <p>The tunnel opens and the runner writes its hostname to a commit status.</p>
+          <p class="note"><strong>Why a commit status?</strong> It is the only GitHub surface readable
+          <em>while a job is still running</em>. Logs, artifacts and step summaries only appear
+          after the job ends — far too late for a live stream. The runner publishes the bare
+          hostname only; on a public repo, statuses are world-readable.</p>
+        </div>
+      </li>
+      <li>
+        <span class="side">Local</span>
+        <div>
+          <h3>Poll, assemble, open</h3>
+          <p>The CLI polls for that status, appends the key it generated in step 4, and opens your
+          browser. The full link exists only on your machine.</p>
+        </div>
+      </li>
+    </ol>
+
+    <p class="muted" style="margin-top:var(--s-lg)">
+      Everything after that is the runner refusing to exit — a health-check loop holds the VM
+      open for <code>--minutes</code>, and the session ends when it stops.
+    </p>
+  </section>
+
+  <section id="how">
+    <p class="label">How it works</p>
+    <h2>No inbound ports. No tricks.</h2>
+    <p class="muted">
+      A GitHub runner has no public IP and nothing can connect to it. native-sim never needs
+      to — three ordinary mechanisms are stacked instead.
+    </p>
+    <ol class="steps">
+      <li>
+        <h3>A job that refuses to exit</h3>
+        <p class="muted">The final step spends its life in a health-check loop. That loop <em>is</em> the hosting: while it spins, the VM exists and the simulator stays booted.</p>
+      </li>
+      <li>
+        <h3>A tunnel dialed from the inside</h3>
+        <p class="muted"><code>cloudflared</code> runs <em>in</em> the job and opens an outbound connection to Cloudflare's edge. Your browser's request comes back down a pipe the runner already opened.</p>
+      </li>
+      <li>
+        <h3>One HTTP response that never ends</h3>
+        <p class="muted">The simulator's GPU framebuffer is captured, JPEG-encoded, and written as <code>multipart/x-mixed-replace</code> — a single response that simply never completes.</p>
+      </li>
+      <li>
+        <h3>Input travels back over a WebSocket</h3>
+        <p class="muted">Taps and keystrokes reach <code>simctl</code> as genuine touch events. An auth gate re-checks the key on the upgrade request, not just on page load.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section id="agent">
+    <p class="label">Agent control</p>
+    <h2>Let your agent drive it.</h2>
+    <p class="muted">
+      <code>--agent</code> runs an <a href="https://agent-device.dev/">agent-device</a> proxy beside
+      the simulator, on the same tunnel and the same key as the stream. Your coding agent taps,
+      scrolls and reads the accessibility tree of an app running on a GitHub runner — while you
+      watch the same session in a browser.
+    </p>
+    <div class="code">
+<pre><span class="c-dim">$</span> native-sim up --public --agent
+
+<span class="c-dim">$</span> agent-device connect proxy \
+    --daemon-base-url https://&lt;tunnel&gt;/agent-device \
+    --daemon-auth-token &lt;key&gt;
+
+<span class="c-dim">$</span> agent-device open com.your.app --platform ios
+Opened: com.your.app
+Session state: <span class="c-dim">/Users/runner/</span>.agent-device/sessions/proxy_adc-e8554d
+
+<span class="c-dim">$</span> agent-device press 'label="Explore"' --settle
+Tapped label="Explore" (244, 822)
+settled after 1003ms: +15 -10 (~5 unchanged)</pre>
+    </div>
+    <p class="muted">
+      That <code>/Users/runner/</code> path is the giveaway — the session lives on the runner, and
+      the coordinates are real touch injections, not screenshot diffing.
+    </p>
+  </section>
+
+  <section>
+    <p class="label">Build caching</p>
+    <h2>The build is the whole cost.</h2>
+    <p class="muted">
+      A cold native build measured <strong>28.4 minutes</strong>. native-sim caches the built
+      <code>.app</code> keyed on <code>@expo/fingerprint</code>, which hashes only what affects the
+      <em>native</em> build and deliberately ignores your JavaScript. Change JS, get a cache hit:
+      the cached native shell is re-bundled with your current code.
+    </p>
+    <table>
+      <thead><tr><th>Cache</th><th>Stream URL</th><th>App on screen</th></tr></thead>
+      <tbody>
+        <tr><td>Cold</td><td class="num">~5 min</td><td class="num">~33 min</td></tr>
+        <tr><td>Warm</td><td class="num">~3 min</td><td class="num">7 min (measured)</td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:var(--s-md)">
+      Already have a simulator build? <code>--app-file</code> skips compiling entirely, and your
+      source is never pushed — the repo holds only the workflow.
+    </p>
+  </section>
+
+  <section id="hosting">
+    <p class="label">Build hosting</p>
+    <h2>Your builds stay on your repo.</h2>
+    <p class="muted">
+      To run a prebuilt app, the runner has to fetch it from somewhere. native-sim uploads it as
+      an asset on a draft release of the <em>same repo the workflow runs in</em> — so the job's own
+      <code>GITHUB_TOKEN</code> can already read it.
+    </p>
+    <div class="code">
+<pre><span class="c-dim">$</span> native-sim up --app-file ./MyApp.app
+
+<span class="c-dim">›</span> Uploading ./MyApp.app to you/your-app
+<span class="c-dim">✓</span> uploaded 26.4 MB as MyApp.app.tar.gz
+<span class="c-dim">›</span> draft release on this repo — only people who can read the repo can fetch it
+
+  <span class="c-hot">●</span> Simulator is live</pre>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h3>No third-party account</h3>
+        <p class="muted">No bucket, no API token, no credentials file. If you can push to the repo, hosting already works.</p>
+      </div>
+      <div class="card">
+        <h3>Private repos stay private</h3>
+        <p class="muted">A private repo's release assets are readable only by people who can read the repo — at no cost, and with no signed URL to expire mid-session.</p>
+      </div>
+      <div class="card">
+        <h3>Draft by default</h3>
+        <p class="muted">Draft releases are not listed publicly, so a public repo does not quietly start publishing your binaries. You are warned if one ever would.</p>
+      </div>
+      <div class="card">
+        <h3>R2 still there</h3>
+        <p class="muted">Pass <code>--r2</code> to host on Cloudflare R2 with a presigned URL instead — useful when the build must live outside the repo entirely.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="cost">
+    <p class="label">Cost</p>
+    <h2>Free on public repos.</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Public</h3>
+        <p class="muted">Unlimited free Actions minutes. This is the whole reason native-sim is viable — <code>--public</code> is not a detail.</p>
+      </div>
+      <div class="card">
+        <h3>Private</h3>
+        <p class="muted">macOS bills at $0.062/min with a 10× multiplier against included minutes. One hour is 600 quota minutes. native-sim warns you.</p>
+      </div>
+      <div class="card">
+        <h3>Access</h3>
+        <p class="muted">Every session gets a one-time key. The gate requires it on each request and on the WebSocket upgrade — but it is a shareable bearer link.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="label">Limits</p>
+    <h2>What it is not.</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Ephemeral</h3>
+        <p class="muted">The VM is destroyed when the job ends. Every session gets a new URL and an old link can never be revived.</p>
+      </div>
+      <div class="card">
+        <h3>Six hours, hard</h3>
+        <p class="muted">GitHub kills hosted jobs at 360 minutes. The hold loop ends the session earlier.</p>
+      </div>
+      <div class="card">
+        <h3>A small box</h3>
+        <p class="muted">~3 vCPU and 7 GB running Xcode, a simulator and a video encoder. A warm cache keeps the stream smooth.</p>
+      </div>
+      <div class="card">
+        <h3>Within reason</h3>
+        <p class="muted">Actions terms cover building and testing the repo's software. PR-preview sessions fit; a 24/7 simulator host does not.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    MIT licensed · <a href="https://github.com/bidah/native-sim">github.com/bidah/native-sim</a>
+  </footer>
+</div>
+
+</body>
+</html>

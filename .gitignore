@@ -1,0 +1,4 @@
+node_modules/
+# test/my-app is its own git repo used as a live fixture
+test/
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "name": "native-sim",
+  "version": "0.1.0",
+  "description": "Push an Expo app to GitHub, build it on a free macOS runner, and stream the iOS Simulator back to your browser via serve-sim.",
+  "type": "module",
+  "bin": { "native-sim": "bin/native-sim.js" },
+  "engines": { "node": ">=20" },
+  "files": ["bin", "src", "templates", "README.md"],
+  "license": "MIT"
+}
