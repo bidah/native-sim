@@ -27,7 +27,7 @@ export function run(cmd, args = [], opts = {}) {
 }
 
 export function has(cmd) {
-  return sh('which', [cmd]).ok;
+  return sh(cmd, ['--version'], { windowsHide: true }).ok;
 }
 
 export function open(url) {

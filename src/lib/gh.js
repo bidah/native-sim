@@ -1,7 +1,7 @@
-import { sh, shx } from './proc.js';
+import { sh, shx, has } from './proc.js';
 
 export function requireAuth() {
-  if (!sh('which', ['gh']).ok) {
+  if (!has('gh')) {
     throw new Error('GitHub CLI not found. Install it: brew install gh');
   }
   if (!sh('gh', ['auth', 'status']).ok) {
